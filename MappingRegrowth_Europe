@@ -1,0 +1,365 @@
+var imglist_burnorNot = ee.List([]); // 创建空白list存储不同年份burn index
+// var imglist_forest_burnorNot = ee.List([]); // 创建空白list存储不同年份burn index
+// var imglist_forest_burnDate = ee.List([]);  // 
+var imglist_forest_burnYear = ee.List([]);
+// var imglist_forest_LC = ee.List([]);
+var add_CLhigh_BD = function(image) {
+                        var cl = image.select('ConfidenceLevel');
+                        var cl_high = cl.where(cl.lt(95),0).where(cl.gte(95),1);
+                        var cl_high_rename = cl_high.rename('CL_high');
+                        var bd = image.select('BurnDate');
+                        var BD_athighcl = bd.where(cl.lt(95),0);
+                        var BD_athighcl_rename = BD_athighcl.rename('BD_athighcl');
+                        // return image.addBands(cl_high_rename).addBands(BD_athighcl_rename);
+                        var month = image.date().get('month');
+                        var month_allpixels = ee.Image.constant(month).uint8().rename('month');
+                        return image.addBands(cl_high_rename).addBands(BD_athighcl_rename).addBands(month_allpixels);
+                        };
+                      
+var get_dates = function(image) {
+                return ee.Feature(null, {'date': image.date().format('YYYY-MM-dd')})
+              };             
+
+for (var yeari=2001;yeari<=2020;yeari++)
+{ 
+  // var Lossyear_i = Lossyear_GFC.eq(yeari-2000);
+  var start = ee.Date.fromYMD(yeari,1,1);
+  var end = ee.Date.fromYMD(yeari,12,31);
+  var dataset = ee.ImageCollection('ESA/CCI/FireCCI/5_1')
+                  .filterDate(start, end);
+
+  var dataset_withCLhigh = dataset.map(add_CLhigh_BD);
+  var dataset_BDmax = dataset_withCLhigh.qualityMosaic('BD_athighcl'); // select the BA with CL >90%
+  // print (dataset_BDmax);
+  
+  var BurnDate_max = dataset_BDmax.select('BurnDate');
+  var LC_atBDmax = dataset_BDmax.select('LandCover');
+  var LC_forest = LC_atBDmax.where(LC_atBDmax.gt(90),0).where(LC_atBDmax.lt(50),0);
+  var LC_mask = LC_atBDmax.gt(0);
+  
+  var TC = ee.ImageCollection('NASA/MEASURES/GFCC/TC/v3').filterDate('2000-01-01', '2000-12-31');
+  var TC1 = TC.select('tree_canopy_cover');
+  // var TC = ee.ImageCollection('MODIS/006/MOD44B').filterDate(start, end).filterBounds(roi);
+  // var TC1 = TC.select('Percent_Tree_Cover');
+  TC1 = TC1.mean();
+  var TC_mask = TC1.gt(10);// >10 FAO forest definition 
+  // var TC_mask = TC1;
+  LC_mask = LC_mask.updateMask(TC_mask);
+  var BurnorNot_forest  = LC_mask;
+
+  var Forest_burnYear = BurnorNot_forest.where(BurnorNot_forest.gte(1),yeari-2000);
+  Forest_burnYear = Forest_burnYear.toUint8();
+  imglist_forest_burnYear = imglist_forest_burnYear.add(Forest_burnYear);
+}
+
+var imgcol_forest_burnyear = ee.ImageCollection.fromImages(imglist_forest_burnYear);
+var img_forest_burnyear    = imgcol_forest_burnyear.toBands();
+var Forest_burnYear_Last   = imgcol_forest_burnyear.max();
+var Forest_burnYear_First  = imgcol_forest_burnyear.min();
+var BurnorNot_forest_Last  = Forest_burnYear_Last.gte(1);
+//用截止到2019年的火烧像元（最后一次火烧时间）
+var Forest_burnYear_Last2019 = Forest_burnYear_Last.updateMask(Forest_burnYear_Last.lt(20));
+//Map.addLayer(Forest_burnYear_Last2019,{min: 1, max: 19, palette: ['yellow', 'red']},'Forest_burnYear_Last2019');
+
+//upload and import global GLASS LAI median mosaics (250m, 2000-2021)
+//import global AVHRR LAI and FPAR medians before 2000 (AVHRR LAI and FPAR: 1981-06-24–2013-12-31,scale = 0.001,5km)
+var resample = function(image) {var resampledImage = image.resample('bilinear').reproject({crs: 'EPSG:4326',scale: 30});return resampledImage;};
+
+//30m火烧像元
+var loss_due_to_fire = ee.ImageCollection('users/sashatyu/2001-2022_fire_forest_loss_annual').mosaic();
+var loss_due_to_fire2019 = loss_due_to_fire.updateMask(loss_due_to_fire.lt(20));
+//Map.addLayer(loss_due_to_fire2019,{min: 1, max: 19, palette: ['yellow', 'red']},'loss_due_to_fire2019');
+
+//2001-2018年的风暴像元
+var wind = wind_loss.updateMask(wind_loss.gt(2000));
+
+//扰动数据范围
+var gfc2022 = ee.Image('UMD/hansen/global_forest_change_2022_v1_10');
+var lossyear = gfc2022.select(['lossyear']);
+var lossyear2019 = lossyear.updateMask(lossyear.lt(20));
+var loss_recover_time1=lossyear2019.multiply(-1).add(20);
+var loss_recover_time = loss_recover_time1.updateMask(loss_recover_time1.gt(0)).uint8();
+
+//删减得到砍伐范围
+var deforestation_recover_time = loss_recover_time.updateMask(loss_due_to_fire2019.mask().not()).updateMask(wind.mask().not());
+Map.addLayer(deforestation_recover_time,{min: 1, max: 19, palette: ['yellow', 'red']},'deforestation_recover_time');
+
+////用"Global 4-class PALSAR-2/PALSAR Forest/Non-Forest Map"筛选恢复为森林的区域
+var FNF4 = ee.ImageCollection('JAXA/ALOS/PALSAR/YEARLY/FNF4')
+                  .filterDate('2020-01-01', '2020-12-31')
+                  .select('fnf');
+var FNF_ = FNF4.qualityMosaic('fnf');
+//看效果时不进行重采样
+//var FNF = resample(FNF_);
+//1_Dense forest; 2_Non-dence Forest; 3_Non-forest; 4_Water
+var forest_2020 = FNF_.updateMask(FNF_.lte(2));
+//Map.addLayer(forest_2020,{min: 1, max: 2, palette: ['purple','yellow']},'forest_2020');
+var forest_recover = deforestation_recover_time.updateMask(forest_2020.mask());
+//Map.addLayer(forest_recover,{min: 1, max: 19, palette: ['green']},'forest_recover');
+
+////**制图恢复类型**2019年(包括2019)之前砍伐的2种恢复类型
+var forest_height2000= ee.Image("projects/glad/GLCLU2020/Forest_height_2000").select("b1");
+var forest_height2020= ee.Image("projects/glad/GLCLU2020/Forest_height_2020").select("b1");
+//区分种植林和自然再生林
+//PlantationYear dataset (1982-2019)
+var plantationYear = ee.ImageCollection(PYear).mosaic().select(['b1']);
+var plantation2001_2020 = plantationYear.updateMask(plantationYear.gt(2000));
+//Map.addLayer(plantation2001_2020,{min: 2001, max: 2020, palette: ['blue']},'plantation2001_2020');
+var plantation = forest_recover.updateMask(plantation2001_2020.mask());
+var natural_regrowth_forest = forest_recover.updateMask(plantation.mask().not());
+var plantation1 = plantation.where(plantation,1);
+var natural_regrowth_forest2 = natural_regrowth_forest.where(natural_regrowth_forest,2);
+//nonforest_recover
+var nonforest_recover = deforestation_recover_time.updateMask(forest_recover.mask().not());//.mask().not()代表取其余范围像元
+var nonforest_recover3 = nonforest_recover.where(nonforest_recover, 3);
+//合并
+var recover_type2020 = ee.ImageCollection([plantation1, natural_regrowth_forest2, nonforest_recover3]).mosaic().uint8();
+Map.addLayer(recover_type2020,{min: 1, max: 3, palette: ['green','purple', 'red']},'recover_type2020');
+
+var forest_recover_time = forest_recover;
+
+//**制图高度恢复量**2020树高恢复
+var height_2020 = forest_height2020.updateMask(forest_recover.mask());
+
+//生成随机点提取恢复时间和恢复高度
+var points_Europe = ee.FeatureCollection.randomPoints(Europe, 50000);
+var height_Values = height_2020.reduceRegions({
+  collection: points_Europe,
+  reducer: ee.Reducer.mean(),
+  scale: 30,
+});
+var recovertime_Values = forest_recover_time.reduceRegions({
+  collection: points_Europe,
+  reducer: ee.Reducer.mean(),
+  scale: 30,
+});
+
+//导出建立恢复时间高度关系公式
+Export.table.toDrive({
+  collection:height_Values,
+  folder:"Europe_height_random",
+  description: "Europe_height_random",
+  fileNamePrefix: "Europe_height_random",
+});
+Export.table.toDrive({
+  collection:recovertime_Values,
+  folder:"Europe_recovertime_random",
+  description: "Europe_recovertime_random",
+  fileNamePrefix: "Europe_recovertime_random",
+});
+////高度和生物量制图(附加恢复比例)
+//再生林高度公式f(x) = -22.16*e^-0.1146x+24.02，
+//再生林生物量公式(30m*30m)/(100m*100m)* 3.9314h^1.2103 = 0.3538h^1.2103. unit: Mg/900m^2
+//***种植林考虑*10再转整形输出***
+//**2000参考AGB**
+var AGB_2000_reference= forest_height2000.updateMask(height_2020.mask()).pow(1.2103).multiply(0.3538).multiply(10);
+
+//2020
+var AGB_2020_=  height_2020.pow(1.2103).multiply(0.3538).add(0.1).multiply(10).toUint8();//乘了10倍，加0.1为了避免出现0值
+var AGB_2020 = AGB_2020_.updateMask(AGB_2020_.gt(0));
+var height_recover2020_ratio = height_2020.float().divide(forest_height2000.float()).multiply(100).toUint8().updateMask(height_2020.mask());
+var AGB_recover2020_ratio = AGB_2020.float().divide(AGB_2000_reference.float()).multiply(100).toUint8().updateMask(AGB_2020.mask());
+//2015
+var forest_recover_time2015 = forest_recover_time.subtract(5);
+var frt2015 =  forest_recover_time2015.updateMask(forest_recover_time2015.gt(0));
+var height_2015_ = frt2015.multiply(-0.1146).exp().multiply(-22.16).add(24.02).toUint8();
+var height_2015 = height_2015_.updateMask(height_2015_.gt(2));
+var height_recover2015_ratio = height_2015.float().divide(forest_height2000.float()).multiply(100).toUint8().updateMask(height_2015.mask());
+var AGB_2015_=  height_2015.float().pow(1.2103).multiply(0.3538).add(0.1).multiply(10).toUint8();//乘了10倍，加0.1为了避免出现0值
+var AGB_2015 = AGB_2015_.updateMask(AGB_2015_.gt(0));
+var AGB_recover2015_ratio = AGB_2015.float().divide(AGB_2000_reference.float()).multiply(100).toUint8().updateMask(AGB_2015.mask());
+//2010
+var forest_recover_time2010 = forest_recover_time2015.subtract(5);
+var frt2010 =  forest_recover_time2010.updateMask(forest_recover_time2010.gt(0));
+var height_2010_ = frt2010.multiply(-0.1146).exp().multiply(-22.16).add(24.02).toUint8();
+var height_2010 = height_2010_.updateMask(height_2010_.gt(2));
+var height_recover2010_ratio = height_2010.float().divide(forest_height2000.float()).multiply(100).toUint8().updateMask(height_2010.mask());
+var AGB_2010_=  height_2010.float().pow(1.2103).multiply(0.3538).add(0.1).multiply(10).toUint8();//乘了10倍，加0.1为了避免出现0值
+var AGB_2010 = AGB_2010_.updateMask(AGB_2010_.gt(0));
+var AGB_recover2010_ratio = AGB_2010.float().divide(AGB_2000_reference.float()).multiply(100).toUint8().updateMask(AGB_2010.mask());
+//2005
+var forest_recover_time2005 = forest_recover_time2010.subtract(5);
+var frt2005 = forest_recover_time2005.updateMask(forest_recover_time2005.gt(0));
+var height_2005_ = frt2005.multiply(-0.1146).exp().multiply(-22.16).add(24.02).toUint8();
+var height_2005 = height_2005_.updateMask(height_2005_.gt(2));
+var height_recover2005_ratio = height_2005.float().divide(forest_height2000.float()).multiply(100).toUint8().updateMask(height_2005.mask());
+var AGB_2005_=  height_2005.float().pow(1.2103).multiply(0.3538).add(0.1).multiply(10).toUint8();//乘了10倍，加0.1为了避免出现0值
+var AGB_2005 = AGB_2005_.updateMask(AGB_2005_.gt(0));
+var AGB_recover2005_ratio = AGB_2005.float().divide(AGB_2000_reference.float()).multiply(100).toUint8().updateMask(AGB_2005.mask());
+
+//制图恢复速率（高度和生物量）放大了10倍
+//高度公式求导后f(x) = 2.5395*e^-0.1146x   //-22.16*e^-0.1146x+24.02
+//生物量与恢复时间公式f(x) =  0.3538(-22.16*e^-0.1146x+24.02)^1.2103
+//上式求导后= 0.3538*2.5395*1.2103*(-22.16*e^-0.1146x+24.02)^0.2103*e^-0.1146x = 1.0874(-22.16*e^-0.1146x+24.02)^0.2103*e^-0.1146x
+//2020
+var height_recover_rate2020 = forest_recover_time.multiply(-0.1146).exp().multiply(2.5395).add(0.1).multiply(10).toUint8();
+var AGB_recover_rate2020 = forest_recover_time.multiply(-0.1146).exp().multiply(1.0874).multiply
+      (forest_recover_time.multiply(-0.1146).exp().multiply(-22.16).add(24.02).pow(0.2103)).add(0.1).multiply(10).toUint8();
+//2015
+var height_recover_rate2015 = frt2015.multiply(-0.1146).exp().multiply(2.5395).add(0.1).multiply(10).toUint8();
+var AGB_recover_rate2015 = frt2015.multiply(-0.1146).exp().multiply(1.0874).multiply
+      (frt2015.multiply(-0.1146).exp().multiply(-22.16).add(24.02).pow(0.2103)).add(0.1).multiply(10).toUint8();
+//2010
+var height_recover_rate2010 = frt2010.multiply(-0.1146).exp().multiply(2.5395).add(0.1).multiply(10).toUint8();
+var AGB_recover_rate2010 = frt2010.multiply(-0.1146).exp().multiply(1.0874).multiply
+      (frt2010.multiply(-0.1146).exp().multiply(-22.16).add(24.02).pow(0.2103)).add(0.1).multiply(10).toUint8();
+//2005
+var height_recover_rate2005 = frt2005.multiply(-0.1146).exp().multiply(2.5395).add(0.1).multiply(10).toUint8();
+var AGB_recover_rate2005 = frt2005.multiply(-0.1146).exp().multiply(1.0874).multiply
+      (frt2005.multiply(-0.1146).exp().multiply(-22.16).add(24.02).pow(0.2103)).add(0.1).multiply(10).toUint8();
+
+//验证2010AGB
+var AGB_reference2010 = ee.Image("projects/sat-io/open-datasets/ESA/ESA_CCI_AGB/CCI_BIOMASS_100m_AGB_2010_v4").select(['AGB']);
+//Map.addLayer(AGB_reference2010,{min:1,max:450,palette: palette4},'AGB_reference2010');
+var AGB_2010 = AGB_2010.setDefaultProjection({crs: 'EPSG:4326',scale: 30});
+var AGB_my2010_100 = AGB_2010.reduceResolution({reducer: ee.Reducer.mean(),maxPixels: 65536})
+    .reproject({crs: 'EPSG:4326',scale: 100}).float().divide(10).divide(0.09);
+//Map.addLayer(AGB_my2010_100,{min:1,max:450,palette: palette4},'AGB_2010_my100');
+var validation_points = ee.FeatureCollection(validation, 'geometry');
+var AGB_reference2010_Values = AGB_reference2010.reduceRegions({
+  collection: validation_points,reducer: ee.Reducer.mean(),
+  scale: 100,});
+var AGB_my2010_100_Values = AGB_my2010_100.reduceRegions({
+  collection: validation_points,reducer: ee.Reducer.mean(),
+  scale: 100,});
+//导出
+Export.table.toDrive({
+  collection:AGB_reference2010_Values,
+  folder:"Europe_AGB_reference2010",
+  description: "Europe_AGB_reference2010",
+});
+Export.table.toDrive({
+  collection:AGB_my2010_100_Values,
+  folder:"Europe_AGB_my2010",
+  description: "Europe_AGB_my2010",
+});
+
+//**制图LAI与FPAR恢复量、恢复程度**LAI原始值已放大了10倍
+var LAI250m_2000 = resample(LAI250m_2000_);var LAI250m_2001 = resample(LAI250m_2001_);var LAI250m_2004 = resample(LAI250m_2004_);
+var LAI250m_2005 = resample(LAI250m_2005_);var LAI250m_2006 = resample(LAI250m_2006_);var LAI250m_2009 = resample(LAI250m_2009_);
+var LAI250m_2010 = resample(LAI250m_2010_);var LAI250m_2011 = resample(LAI250m_2011_);var LAI250m_2014 = resample(LAI250m_2014_);
+var LAI250m_2015 = resample(LAI250m_2015_);
+var LAI250m_2016 = resample(LAI250m_2016_);var LAI250m_2019 = resample(LAI250m_2019_);var LAI250m_2020 = resample(LAI250m_2020_);
+var LAI250m_2021 = resample(LAI250m_2021_);
+var FPAR250m_2000 = resample(FPAR250m_2000_);var FPAR250m_2001 = resample(FPAR250m_2001_);var FPAR250m_2004 = resample(FPAR250m_2004_);
+var FPAR250m_2005 = resample(FPAR250m_2005_);var FPAR250m_2006 = resample(FPAR250m_2006_);var FPAR250m_2009 = resample(FPAR250m_2009_);
+var FPAR250m_2010 = resample(FPAR250m_2010_);var FPAR250m_2011 = resample(FPAR250m_2011_);var FPAR250m_2014 = resample(FPAR250m_2014_);
+var FPAR250m_2015 = resample(FPAR250m_2015_);
+var FPAR250m_2016 = resample(FPAR250m_2016_);var FPAR250m_2019 = resample(FPAR250m_2019_);var FPAR250m_2020 = resample(FPAR250m_2020_);
+var FPAR250m_2021 = resample(FPAR250m_2021_);
+
+//2020
+var LAI_recover2020 = LAI250m_2020_.updateMask(forest_recover_time.mask()).toUint8();
+var FPAR_recover2020 = FPAR250m_2020_.updateMask(forest_recover_time.mask()).toUint8();
+var LAI_recover2020_ratio = LAI_recover2020.float().divide(LAI250m_2000_.float()).multiply(100).toUint8().updateMask(LAI_recover2020.mask());
+var FPAR_recover2020_ratio = FPAR_recover2020.float().divide(FPAR250m_2000_.float()).multiply(100).toUint8().updateMask(FPAR_recover2020.mask());
+//2015
+var LAI_recover2015 = LAI250m_2015_.updateMask(frt2015.mask()).toUint8();
+var FPAR_recover2015 = FPAR250m_2015_.updateMask(frt2015.mask()).toUint8();
+var LAI_recover2015_ratio = LAI_recover2015.float().divide(LAI250m_2000_.float()).multiply(100).toUint8().updateMask(LAI_recover2015.mask());
+var FPAR_recover2015_ratio = FPAR_recover2015.float().divide(FPAR250m_2000_.float()).multiply(100).toUint8().updateMask(FPAR_recover2015.mask());
+//2010
+var LAI_recover2010 = LAI250m_2010_.updateMask(frt2010.mask()).toUint8();
+var FPAR_recover2010 = FPAR250m_2010_.updateMask(frt2010.mask()).toUint8();
+var LAI_recover2010_ratio = LAI_recover2010.float().divide(LAI250m_2000_.float()).multiply(100).toUint8().updateMask(LAI_recover2010.mask());
+var FPAR_recover2010_ratio = FPAR_recover2010.float().divide(FPAR250m_2000_.float()).multiply(100).toUint8().updateMask(FPAR_recover2010.mask());
+//2005
+var LAI_recover2005 = LAI250m_2005_.updateMask(frt2005.mask()).toUint8();
+var FPAR_recover2005 = FPAR250m_2005_.updateMask(frt2005.mask()).toUint8();
+var LAI_recover2005_ratio = LAI_recover2005.float().divide(LAI250m_2000_.float()).multiply(100).toUint8().updateMask(LAI_recover2005.mask());
+var FPAR_recover2005_ratio = FPAR_recover2005.float().divide(FPAR250m_2000_.float()).multiply(100).toUint8().updateMask(FPAR_recover2005.mask());
+
+////制图恢复速率
+//map forest LAI and FPAR regrowth rate
+var LAI_recover2021 = LAI250m_2021.updateMask(forest_recover_time.mask()).toUint8();
+var LAI_recover2019 = LAI250m_2019.updateMask(forest_recover_time.mask()).toUint8();
+var LAI_recover2016 = LAI250m_2016.updateMask(frt2015.mask()).toUint8();
+var LAI_recover2014 = LAI250m_2014.updateMask(frt2015.mask()).toUint8();
+var LAI_recover2011 = LAI250m_2011.updateMask(frt2010.mask()).toUint8();
+var LAI_recover2009 = LAI250m_2009.updateMask(frt2010.mask()).toUint8();
+var LAI_recover2006 = LAI250m_2006.updateMask(frt2005.mask()).toUint8();
+var LAI_recover2004 = LAI250m_2004.updateMask(frt2005.mask()).toUint8();
+var FPAR_recover2021 = FPAR250m_2021.updateMask(forest_recover_time.mask()).toUint8();
+var FPAR_recover2019 = FPAR250m_2019.updateMask(forest_recover_time.mask()).toUint8();
+var FPAR_recover2016 = FPAR250m_2016.updateMask(frt2015.mask()).toUint8();
+var FPAR_recover2014 = FPAR250m_2014.updateMask(frt2015.mask()).toUint8();
+var FPAR_recover2011 = FPAR250m_2011.updateMask(frt2010.mask()).toUint8();
+var FPAR_recover2009 = FPAR250m_2009.updateMask(frt2010.mask()).toUint8();
+var FPAR_recover2006 = FPAR250m_2006.updateMask(frt2005.mask()).toUint8();
+var FPAR_recover2004 = FPAR250m_2004.updateMask(frt2005.mask()).toUint8();
+//2020
+var LAI_recover_rate2020_ = (LAI_recover2021.subtract(LAI_recover2019)).divide(2);
+var LAI_recover_rate2020 = LAI_recover_rate2020_.where(LAI_recover_rate2020_.lt(0.1),0.1).multiply(10).toUint8();
+var FPAR_recover_rate2020_ = (FPAR_recover2021.subtract(FPAR_recover2019)).divide(2);
+var FPAR_recover_rate2020 = FPAR_recover_rate2020_.where(FPAR_recover_rate2020_.lt(0.1),0.1).multiply(10).toUint8();
+//2015
+var LAI_recover_rate2015_ = (LAI_recover2016.subtract(LAI_recover2014)).divide(2);
+var LAI_recover_rate2015 = LAI_recover_rate2015_.where(LAI_recover_rate2015_.lt(0.1),0.1).multiply(10).toUint8();
+var FPAR_recover_rate2015_ = (FPAR_recover2016.subtract(FPAR_recover2014)).divide(2);
+var FPAR_recover_rate2015 = FPAR_recover_rate2015_.where(FPAR_recover_rate2015_.lt(0.1),0.1).multiply(10).toUint8();
+//2010
+var LAI_recover_rate2010_ = (LAI_recover2011.subtract(LAI_recover2009)).divide(2);
+var LAI_recover_rate2010 = LAI_recover_rate2010_.where(LAI_recover_rate2010_.lt(0.1),0.1).multiply(10).toUint8();
+var FPAR_recover_rate2010_ = (FPAR_recover2011.subtract(FPAR_recover2009)).divide(2);
+var FPAR_recover_rate2010 = FPAR_recover_rate2010_.where(FPAR_recover_rate2010_.lt(0.1),0.1).multiply(10).toUint8();
+//2005
+var LAI_recover_rate2005_ = (LAI_recover2006.subtract(LAI_recover2004)).divide(2);
+var LAI_recover_rate2005 = LAI_recover_rate2005_.where(LAI_recover_rate2005_.lt(0.1),0.1).multiply(10).toUint8();
+var FPAR_recover_rate2005_ = (FPAR_recover2006.subtract(FPAR_recover2004)).divide(2);
+var FPAR_recover_rate2005 = FPAR_recover_rate2005_.where(FPAR_recover_rate2005_.lt(0.1),0.1).multiply(10).toUint8();
+//Map.addLayer(LAI_recover_rate2020,{min: 1, max: 50, palette: ['green']},'LAI_recover_rate2020');
+
+//导出
+var height_regrowth = recover_type2020.addBands([
+                    height_recover2020_ratio, height_recover2015_ratio, height_recover2010_ratio, height_recover2005_ratio,
+                    height_recover_rate2020, height_recover_rate2015, height_recover_rate2010, height_recover_rate2005])
+                    .rename([
+                    'Regrowth_type_2020',
+                    'Height_regrowth_ratio_2020', 'Height_regrowth_ratio_2015', 'Height_regrowth_ratio_2010', 'Height_regrowth_ratio_2005',
+                    'Height_regrowth_rate_2020', 'Height_regrowth_rate_2015', 'Height_regrowth_rate_2010', 'Height_regrowth_rate_2005']);
+var AGB_regrowth = recover_type2020.addBands([ 
+                    AGB_recover2020_ratio, AGB_recover2015_ratio, AGB_recover2010_ratio, AGB_recover2005_ratio,
+                    AGB_recover_rate2020, AGB_recover_rate2015, AGB_recover_rate2010, AGB_recover_rate2005])
+                    .rename([
+                    'Regrowth_type_2020', 
+                    'AGB_regrowth_ratio_2020', 'AGB_regrowth_ratio_2015', 'AGB_regrowth_ratio_2010', 'AGB_regrowth_ratio_2005',
+                    'AGB_regrowth_rate_2020', 'AGB_regrowth_rate_2015', 'AGB_regrowth_rate_2010', 'AGB_regrowth_rate_2005']);
+var LAI_regrowth = recover_type2020.addBands([
+                    LAI_recover2020_ratio, LAI_recover2015_ratio, LAI_recover2010_ratio, LAI_recover2005_ratio,
+                    LAI_recover_rate2020, LAI_recover_rate2015, LAI_recover_rate2010, LAI_recover_rate2005])
+                    .rename([
+                    'Regrowth_type_2020',
+                    'LAI_regrowth_ratio_2020', 'LAI_regrowth_ratio_2015', 'LAI_regrowth_ratio_2010', 'LAI_regrowth_ratio_2005',
+                    'LAI_regrowth_rate_2020', 'LAI_regrowth_rate_2015', 'LAI_regrowth_rate_2010', 'LAI_regrowth_rate_2005']);
+var FPAR_regrowth = recover_type2020.addBands([
+                    FPAR_recover2020_ratio, FPAR_recover2015_ratio, FPAR_recover2010_ratio, FPAR_recover2005_ratio,
+                    FPAR_recover_rate2020, FPAR_recover_rate2015, FPAR_recover_rate2010, FPAR_recover_rate2005])
+                    .rename([
+                    'Regrowth_type_2020', 
+                    'FPAR_regrowth_ratio_2020', 'FPAR_regrowth_ratio_2015', 'FPAR_regrowth_ratio_2010', 'FPAR_regrowth_ratio_2005',
+                    'FPAR_regrowth_rate_2020', 'FPAR_regrowth_rate_2015', 'FPAR_regrowth_rate_2010', 'FPAR_regrowth_rate_2005']);        
+
+//export 排除,60_-10, 30 30,
+var lonMin = -10; var lonMax = 40; 
+var latMin = 30; var latMax = 70; 
+for (var lon = lonMin; lon < lonMax; lon += 10) {for (var lat = latMin; lat < latMax; lat += 10) {
+    var blockGeometry = ee.Geometry.Rectangle([lon, lat, lon + 10, lat + 10]);
+    var clipped_height_regrowth = height_regrowth.clip(blockGeometry);
+    var clipped_AGB_regrowth = AGB_regrowth.clip(blockGeometry);
+    var clipped_LAI_regrowth = LAI_regrowth.clip(blockGeometry);
+    var clipped_FPAR_regrowth = FPAR_regrowth.clip(blockGeometry);
+    var direction = '';if (lat >= 0) {direction += 'N' + lat ;} else {direction += 'S' + -lat;} if (lon >= 0) {direction += '_E'  + lon;} else {direction += '_W' + -lon ;}
+    var export1 = {image: clipped_height_regrowth,description: 'Europe_Height_regrowth_' + direction,
+    folder: 'Deforest_Europe_Height_regrowth30',scale: 30, crs: 'EPSG:4326', maxPixels: 1e13, fileDimensions: [18688, 18688], region: blockGeometry,skipEmptyTiles: true};Export.image.toDrive(export1);
+    var export2 = {image: clipped_AGB_regrowth,description: 'Europe_AGB_regrowth_' + direction,
+    folder: 'Deforest_Europe_AGB_regrowth30',scale: 30, crs: 'EPSG:4326', maxPixels: 1e13, fileDimensions: [18688, 18688], region: blockGeometry,skipEmptyTiles: true};Export.image.toDrive(export2);
+    var export3 = {image: clipped_LAI_regrowth,description: 'Europe_LAI_regrowth_' + direction,
+    folder: 'Deforest_Europe_LAI_regrowth30',scale: 30, crs: 'EPSG:4326', maxPixels: 1e13, fileDimensions: [18688, 18688], region: blockGeometry,skipEmptyTiles: true};Export.image.toDrive(export3);
+    var export4 = {image: clipped_FPAR_regrowth,description: 'Europe_FPAR_regrowth_' + direction,
+    folder: 'Deforest_Europe_FPAR_regrowth30',scale: 30, crs: 'EPSG:4326', maxPixels: 1e13, fileDimensions: [18688, 18688], region: blockGeometry,skipEmptyTiles: true};Export.image.toDrive(export4);}}
+
+// 导出影像500
+//Export.image.toDrive({image: height_regrowth,description: 'height_regrowth500',folder: 'Deforest_Europe_regrowth500',region: Europe,scale: 500,crs: 'EPSG:4326', maxPixels: 1e13,});
+//Export.image.toDrive({image: AGB_regrowth,description: 'AGB_regrowth500',folder: 'Deforest_Europe_regrowth500',region: Europe,scale: 500,crs: 'EPSG:4326', maxPixels: 1e13,});  
+//Export.image.toDrive({image: LAI_regrowth,description: 'LAI_regrowth500',folder: 'Deforest_Europe_regrowth500',region: Europe,scale: 500,crs: 'EPSG:4326', maxPixels: 1e13,});
+//Export.image.toDrive({image: FPAR_regrowth,description: 'FPAR_regrowth500',folder: 'Deforest_Europe_regrowth500',region: Europe,scale: 500,crs: 'EPSG:4326', maxPixels: 1e13,});  
