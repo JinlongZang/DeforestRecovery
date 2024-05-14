@@ -118,7 +118,7 @@ var AGB_1985_=  height_1985.float().pow(2.12).multiply(0.0251).add(0.1).multiply
 var AGB_1985 = AGB_1985_.updateMask(AGB_1985_.gt(0));
 var AGB_recover1985_ratio = AGB_1985.float().divide(AGB_1981_reference).multiply(100).toUint8().updateMask(AGB_1985.mask());
 
-//Map forest height and AGB regowth rate
+////**Map forest height and AGB regowth rate**
 //2020
 var height_recover_rate2020 = forest_recover_time.multiply(-0.0851).exp().multiply(1.6288).add(0.1).multiply(10).toUint8();
 var AGB_recover_rate2020 = forest_recover_time.multiply(-0.0851).exp().multiply(0.0867).multiply
@@ -200,7 +200,3 @@ for (var lon = lonMin; lon < lonMax; lon += 10) {for (var lat = latMin; lat < la
     folder: 'Deforest_Afirca_height_regrowth30',scale: 30, crs: 'EPSG:4326', maxPixels: 1e13, fileDimensions: [18688, 18688], region: blockGeometry,skipEmptyTiles: true};Export.image.toDrive(export1);
    var export2 = {image: clipped_AGB_regrowth,description: 'Afirca_AGB_regrowth_' + direction,
     folder: 'Deforest_Afirca_AGB_regrowth30',scale: 30, crs: 'EPSG:4326', maxPixels: 1e13, fileDimensions: [18688, 18688], region: blockGeometry,skipEmptyTiles: true};Export.image.toDrive(export2);}}
-
-// 导出影像500
-//Export.image.toDrive({image: height_regrowth,description: 'height_regrowth500',folder: 'Deforest_Africa_regrowth500',region: Africa,scale: 500,crs: 'EPSG:4326', maxPixels: 1e13,});  
-//Export.image.toDrive({image: AGB_regrowth,description: 'AGB_regrowth500',folder: 'Deforest_Africa_regrowth500',region: Africa,scale: 500,crs: 'EPSG:4326', maxPixels: 1e13,});  
