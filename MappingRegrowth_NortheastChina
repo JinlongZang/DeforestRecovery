@@ -1,62 +1,16 @@
+//Upload and import Northeast China deforestation dataset
 var resample = function(image) {var resampledImage = image.resample('bilinear').reproject({crs: 'EPSG:4326',scale: 30});return resampledImage;};
-// 定义图像集合
-//var imageCollection = ee.ImageCollection([dt1986,dt1987,dt1988,dt1989,dt1990,dt1991,dt1992,dt1993,dt1994,dt1995,dt1996,
-          //dt1997,dt1998,dt1999,dt2000,dt2001,dt2002,dt2003,dt2004,dt2005,dt2006,dt2007,dt2008,dt2009,dt2010,dt2011,dt2012,
-          //dt2013,dt2014,dt2015,dt2016,dt2017,dt2018,dt2019]);
-// 定义年份列表
-//var years = [1986,1987,1988,1989,1990,1991,1992,1993,1994,1995,1996,1997,1998,1999,2000,2001,2002,2003,2004,2005,2006,2007,2008,2009,2010,2011,2012,2013,
-          //2014,2015,2016,2017,2018,2019];
-// 使用 .map() 函数处理图像集合
-//var deforestation_area = imageCollection.map(function(image){return image.updateMask(image.eq(1));});
-// 使用 .toList() 函数将图像集合转换为图像列表
-//var imageList = deforestation_area.toList(deforestation_area.size());
-// 选择列表中的第 10个影像（索引为 9）
-//var d1986 = ee.Image(imageList.get(0)).multiply(1986).toUint16();var d1987 = ee.Image(imageList.get(1)).multiply(1987).toUint16();
-//var d1988 = ee.Image(imageList.get(2)).multiply(1988).toUint16();var d1989 = ee.Image(imageList.get(3)).multiply(1989).toUint16();
-//var d1990 = ee.Image(imageList.get(4)).multiply(1990).toUint16();var d1991 = ee.Image(imageList.get(5)).multiply(1991).toUint16();
-//var d1992 = ee.Image(imageList.get(6)).multiply(1992).toUint16();var d1993 = ee.Image(imageList.get(7)).multiply(1993).toUint16();
-//var d1994 = ee.Image(imageList.get(8)).multiply(1994).toUint16();var d1995 = ee.Image(imageList.get(9)).multiply(1995).toUint16();
-//var d1996 = ee.Image(imageList.get(10)).multiply(1996).toUint16();var d1997 = ee.Image(imageList.get(11)).multiply(1997).toUint16();
-//var d1998 = ee.Image(imageList.get(12)).multiply(1998).toUint16();var d1999 = ee.Image(imageList.get(13)).multiply(1999).toUint16();
-//var d2000 = ee.Image(imageList.get(14)).multiply(2000).toUint16();var d2001 = ee.Image(imageList.get(15)).multiply(2001).toUint16();
-//var d2002 = ee.Image(imageList.get(16)).multiply(2002).toUint16();var d2003 = ee.Image(imageList.get(17)).multiply(2003).toUint16();
-//var d2004 = ee.Image(imageList.get(18)).multiply(2004).toUint16();var d2005 = ee.Image(imageList.get(19)).multiply(2005).toUint16();
-//var d2006 = ee.Image(imageList.get(20)).multiply(2006).toUint16();var d2007 = ee.Image(imageList.get(21)).multiply(2007).toUint16();
-//var d2008 = ee.Image(imageList.get(22)).multiply(2008).toUint16();var d2009 = ee.Image(imageList.get(23)).multiply(2009).toUint16();
-//var d2010 = ee.Image(imageList.get(24)).multiply(2010).toUint16();var d2011 = ee.Image(imageList.get(25)).multiply(2011).toUint16();
-//var d2012 = ee.Image(imageList.get(26)).multiply(2012).toUint16();var d2013 = ee.Image(imageList.get(27)).multiply(2013).toUint16();
-//var d2014 = ee.Image(imageList.get(28)).multiply(2014).toUint16();var d2015 = ee.Image(imageList.get(29)).multiply(2015).toUint16();
-//var d2016 = ee.Image(imageList.get(30)).multiply(2016).toUint16();var d2017 = ee.Image(imageList.get(31)).multiply(2017).toUint16();
-//var d2018 = ee.Image(imageList.get(32)).multiply(2018).toUint16();var d2019 = ee.Image(imageList.get(33)).multiply(2019).toUint16();
-//var deforestation_year = ee.ImageCollection([d1986,d1987,d1988,d1989,d1990,d1991,d1992,d1993,d1994,d1995,d1996,
-          //d1997,d1998,d1999,d2000,d2001,d2002,d2003,d2004,d2005,d2006,d2007,d2008,d2009,d2010,d2011,d2012,
-          //d2013,d2014,d2015,d2016,d2017,d2018,d2019]).mosaic();//默认最后一张的有效值。（.qualityMosaic默认最大值）
-
-////查看最近五年的
-//Map.addLayer(d2015,{min: 1, max: 34, palette: ['yellow']},'d2015');
-//Map.addLayer(d2016,{min: 1, max: 34, palette: ['yellow']},'d2016');
-//Map.addLayer(d2017,{min: 1, max: 34, palette: ['yellow']},'d2017');
-//Map.addLayer(d2018,{min: 1, max: 34, palette: ['yellow']},'d2018');
-//Map.addLayer(d2019,{min: 1, max: 34, palette: ['yellow']},'d2019');
 var recover_time1=deforestation_year.multiply(-1).add(2020);
 var recover_time = recover_time1.updateMask(recover_time1.gt(0)).uint8();
-//Map.addLayer(recover_time,{min: 1, max: 34, palette: ['yellow', 'red']},'recover_time');
-//用"Global 4-class PALSAR-2/PALSAR Forest/Non-Forest Map"筛选
+
+//Extract forest recover area
 var FNF4 = ee.ImageCollection('JAXA/ALOS/PALSAR/YEARLY/FNF4')
                   .filterDate('2020-01-01', '2020-12-31')
                   .select('fnf');
 var FNF_ = FNF4.qualityMosaic('fnf');
-//看效果时不进行重采样
-//var FNF = resample(FNF_);
-//1_Dense forest; 2_Non-dence Forest; 3_Non-forest; 4_Water
-var Dense_Nondence_forest = FNF_.updateMask(FNF_.lte(2));
+var FNF = resample(FNF_);
+var Dense_Nondence_forest = FNF_.updateMask(FNF_.lte(2));//1_Dense forest; 2_Non-dence Forest; 3_Non-forest; 4_Water
 var forest_recover = recover_time.updateMask(Dense_Nondence_forest.mask());
-//Map.addLayer(forest_recover,{min: 1, max: 34, palette: ['green']},'forest_recover');
-
-////对比hansen的lossyear
-//var gfc2022 = ee.Image('UMD/hansen/global_forest_change_2022_v1_10');
-//var lossyear = gfc2022.select(['lossyear']);
-//Map.addLayer(lossyear,{min: 1, max: 22, palette: ['yellow', 'red']},'lossyear');
 
 //**制图恢复类型**2019年(包括2019)之前砍伐的2种恢复类型
 var forest_height2000= ee.Image("projects/glad/GLCLU2020/Forest_height_2000").select("b1");//留做验证
