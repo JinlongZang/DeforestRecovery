@@ -1,5 +1,5 @@
-//upload and import global GLASS LAI median mosaics (250m, 2000-2021)
-//import global AVHRR LAI and FPAR medians before 2000 (AVHRR LAI and FPAR: 1981-06-24–2013-12-31,scale = 0.001,5km)
+//Upload and import global GLASS LAI median mosaics (250m, 2000-2021, LAI_scale: 0.1, FPAR_scale: 0.004)
+//Import global AVHRR LAI and FPAR medians before 2000 (AVHRR LAI and FPAR: 1981-06-24–2013-12-31,scale = 0.001,5km)
 var resample = function(image) {var resampledImage = image.resample('bilinear').reproject({crs: 'EPSG:4326',scale: 30});return resampledImage;};
 var LAI250m_2000 = resample(LAI250m_2000_);var LAI250m_2001 = resample(LAI250m_2001_);var LAI250m_2004 = resample(LAI250m_2004_);
 var LAI250m_2005 = resample(LAI250m_2005_);var LAI250m_2006 = resample(LAI250m_2006_);var LAI250m_2009 = resample(LAI250m_2009_);
@@ -14,45 +14,36 @@ var FPAR250m_2015 = resample(FPAR250m_2015_);
 var FPAR250m_2016 = resample(FPAR250m_2016_);var FPAR250m_2019 = resample(FPAR250m_2019_);var FPAR250m_2020 = resample(FPAR250m_2020_);
 var FPAR250m_2021 = resample(FPAR250m_2021_);
 
+//Extract deforestation area
 var gfc2022 = ee.Image('UMD/hansen/global_forest_change_2022_v1_10');
 var lossyear = gfc2022.select(['lossyear']);
-//Map.addLayer(lossyear);
 var NA_deforestation_Year = lossyear.updateMask(NA_deforestation.mask());
 var NA_deforestation_Year2019 = NA_deforestation_Year.updateMask(NA_deforestation_Year.lt(20));
 var recover_time1=NA_deforestation_Year2019.multiply(-1).add(20);
 var recover_time = recover_time1.updateMask(recover_time1.gt(0)).uint8();
-Map.addLayer(recover_time,{min: 1, max: 19, palette: ['blue', 'green', 'red']},'recover_time');
-//用"Global 4-class PALSAR-2/PALSAR Forest/Non-Forest Map"筛选
+
+//Extract forest recover area
 var FNF4 = ee.ImageCollection('JAXA/ALOS/PALSAR/YEARLY/FNF4')
                   .filterDate('2020-01-01', '2020-12-31')
                   .select('fnf');
 var FNF_ = FNF4.qualityMosaic('fnf');
-//看效果时不进行重采样
-//var FNF = resample(FNF_);
-//1_Dense forest; 2_Non-dence Forest; 3_Non-forest; 4_Water
-var Dense_Nondence_forest = FNF_.updateMask(FNF_.lte(2));
+var FNF = resample(FNF_);
+var Dense_Nondence_forest = FNF.updateMask(FNF.lte(2));//1_Dense forest; 2_Non-dence Forest; 3_Non-forest; 4_Water
 var forest_recover = recover_time.updateMask(Dense_Nondence_forest.mask());
-Map.addLayer(forest_recover,{min: 1, max: 19, palette: ['green']},'forest_recover');
 
-//**制图恢复类型**2019年(包括2019)之前砍伐的2种恢复类型
+////**Map regrowth land type in 2020**
 var forest_height2000= ee.Image("projects/glad/GLCLU2020/Forest_height_2000").select("b1");
 var forest_height2020= ee.Image("projects/glad/GLCLU2020/Forest_height_2020").select("b1");
-//区分种植林和自然再生林
-//PlantationYear dataset (1982-2019)
+//Upload and import PlantationYear dataset (1982-2019, 30 m)
 var plantationYear = ee.ImageCollection(PYear).mosaic().select(['b1']);
 var plantation2001_2020 = plantationYear.updateMask(plantationYear.gt(2000));
-//Map.addLayer(plantation2001_2020,{min: 2001, max: 2020, palette: ['blue']},'plantation2001_2020');
 var plantation = forest_recover.updateMask(plantation2001_2020.mask());
 var natural_regrowth_forest = forest_recover.updateMask(plantation.mask().not());
 var plantation1 = plantation.where(plantation,1);
 var natural_regrowth_forest2 = natural_regrowth_forest.where(natural_regrowth_forest,2);
-//nonforest_recover
-var nonforest_recover = recover_time.updateMask(forest_recover.mask().not());//.mask().not()代表取其余范围像元
+var nonforest_recover = recover_time.updateMask(forest_recover.mask().not());
 var nonforest_recover3 = nonforest_recover.where(nonforest_recover, 3);
-//合并
 var recover_type2020 = ee.ImageCollection([plantation1, natural_regrowth_forest2, nonforest_recover3]).mosaic().uint8();
-//Map.addLayer(recover_type2020,{min: 1, max: 3, palette: ['green','purple', 'red']},'recover_type2020');
-
 var forest_recover_time = forest_recover;
 
 //**制图高度恢复量**2020树高恢复
