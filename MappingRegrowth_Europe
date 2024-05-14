@@ -133,8 +133,7 @@ var FPAR_recover2005 = FPAR250m_2005_.updateMask(frt2005.mask()).toUint8();
 var LAI_recover2005_ratio = LAI_recover2005.float().divide(LAI250m_2000_.float()).multiply(100).toUint8().updateMask(LAI_recover2005.mask());
 var FPAR_recover2005_ratio = FPAR_recover2005.float().divide(FPAR250m_2000_.float()).multiply(100).toUint8().updateMask(FPAR_recover2005.mask());
 
-////制图恢复速率
-//map forest LAI and FPAR regrowth rate
+////**Map forest LAI and FPAR regowth rate**
 var LAI_recover2021 = LAI250m_2021.updateMask(forest_recover_time.mask()).toUint8();
 var LAI_recover2019 = LAI250m_2019.updateMask(forest_recover_time.mask()).toUint8();
 var LAI_recover2016 = LAI250m_2016.updateMask(frt2015.mask()).toUint8();
@@ -171,9 +170,8 @@ var LAI_recover_rate2005_ = (LAI_recover2006.subtract(LAI_recover2004)).divide(2
 var LAI_recover_rate2005 = LAI_recover_rate2005_.where(LAI_recover_rate2005_.lt(0.1),0.1).multiply(10).toUint8();
 var FPAR_recover_rate2005_ = (FPAR_recover2006.subtract(FPAR_recover2004)).divide(2);
 var FPAR_recover_rate2005 = FPAR_recover_rate2005_.where(FPAR_recover_rate2005_.lt(0.1),0.1).multiply(10).toUint8();
-//Map.addLayer(LAI_recover_rate2020,{min: 1, max: 50, palette: ['green']},'LAI_recover_rate2020');
 
-//导出
+//Add bands
 var height_regrowth = recover_type2020.addBands([
                     height_recover2020_ratio, height_recover2015_ratio, height_recover2010_ratio, height_recover2005_ratio,
                     height_recover_rate2020, height_recover_rate2015, height_recover_rate2010, height_recover_rate2005])
@@ -203,7 +201,7 @@ var FPAR_regrowth = recover_type2020.addBands([
                     'FPAR_regrowth_ratio_2020', 'FPAR_regrowth_ratio_2015', 'FPAR_regrowth_ratio_2010', 'FPAR_regrowth_ratio_2005',
                     'FPAR_regrowth_rate_2020', 'FPAR_regrowth_rate_2015', 'FPAR_regrowth_rate_2010', 'FPAR_regrowth_rate_2005']);        
 
-//export 排除,60_-10, 30 30,
+//Export
 var lonMin = -10; var lonMax = 40; 
 var latMin = 30; var latMax = 70; 
 for (var lon = lonMin; lon < lonMax; lon += 10) {for (var lat = latMin; lat < latMax; lat += 10) {
@@ -221,9 +219,3 @@ for (var lon = lonMin; lon < lonMax; lon += 10) {for (var lat = latMin; lat < la
     folder: 'Deforest_Europe_LAI_regrowth30',scale: 30, crs: 'EPSG:4326', maxPixels: 1e13, fileDimensions: [18688, 18688], region: blockGeometry,skipEmptyTiles: true};Export.image.toDrive(export3);
     var export4 = {image: clipped_FPAR_regrowth,description: 'Europe_FPAR_regrowth_' + direction,
     folder: 'Deforest_Europe_FPAR_regrowth30',scale: 30, crs: 'EPSG:4326', maxPixels: 1e13, fileDimensions: [18688, 18688], region: blockGeometry,skipEmptyTiles: true};Export.image.toDrive(export4);}}
-
-// 导出影像500
-//Export.image.toDrive({image: height_regrowth,description: 'height_regrowth500',folder: 'Deforest_Europe_regrowth500',region: Europe,scale: 500,crs: 'EPSG:4326', maxPixels: 1e13,});
-//Export.image.toDrive({image: AGB_regrowth,description: 'AGB_regrowth500',folder: 'Deforest_Europe_regrowth500',region: Europe,scale: 500,crs: 'EPSG:4326', maxPixels: 1e13,});  
-//Export.image.toDrive({image: LAI_regrowth,description: 'LAI_regrowth500',folder: 'Deforest_Europe_regrowth500',region: Europe,scale: 500,crs: 'EPSG:4326', maxPixels: 1e13,});
-//Export.image.toDrive({image: FPAR_regrowth,description: 'FPAR_regrowth500',folder: 'Deforest_Europe_regrowth500',region: Europe,scale: 500,crs: 'EPSG:4326', maxPixels: 1e13,});  
