@@ -1,88 +1,23 @@
-var imglist_burnorNot = ee.List([]); // 创建空白list存储不同年份burn index
-// var imglist_forest_burnorNot = ee.List([]); // 创建空白list存储不同年份burn index
-// var imglist_forest_burnDate = ee.List([]);  // 
-var imglist_forest_burnYear = ee.List([]);
-// var imglist_forest_LC = ee.List([]);
-var add_CLhigh_BD = function(image) {
-                        var cl = image.select('ConfidenceLevel');
-                        var cl_high = cl.where(cl.lt(95),0).where(cl.gte(95),1);
-                        var cl_high_rename = cl_high.rename('CL_high');
-                        var bd = image.select('BurnDate');
-                        var BD_athighcl = bd.where(cl.lt(95),0);
-                        var BD_athighcl_rename = BD_athighcl.rename('BD_athighcl');
-                        // return image.addBands(cl_high_rename).addBands(BD_athighcl_rename);
-                        var month = image.date().get('month');
-                        var month_allpixels = ee.Image.constant(month).uint8().rename('month');
-                        return image.addBands(cl_high_rename).addBands(BD_athighcl_rename).addBands(month_allpixels);
-                        };
-                      
-var get_dates = function(image) {
-                return ee.Feature(null, {'date': image.date().format('YYYY-MM-dd')})
-              };             
-
-for (var yeari=2001;yeari<=2020;yeari++)
-{ 
-  // var Lossyear_i = Lossyear_GFC.eq(yeari-2000);
-  var start = ee.Date.fromYMD(yeari,1,1);
-  var end = ee.Date.fromYMD(yeari,12,31);
-  var dataset = ee.ImageCollection('ESA/CCI/FireCCI/5_1')
-                  .filterDate(start, end);
-
-  var dataset_withCLhigh = dataset.map(add_CLhigh_BD);
-  var dataset_BDmax = dataset_withCLhigh.qualityMosaic('BD_athighcl'); // select the BA with CL >90%
-  // print (dataset_BDmax);
-  
-  var BurnDate_max = dataset_BDmax.select('BurnDate');
-  var LC_atBDmax = dataset_BDmax.select('LandCover');
-  var LC_forest = LC_atBDmax.where(LC_atBDmax.gt(90),0).where(LC_atBDmax.lt(50),0);
-  var LC_mask = LC_atBDmax.gt(0);
-  
-  var TC = ee.ImageCollection('NASA/MEASURES/GFCC/TC/v3').filterDate('2000-01-01', '2000-12-31');
-  var TC1 = TC.select('tree_canopy_cover');
-  // var TC = ee.ImageCollection('MODIS/006/MOD44B').filterDate(start, end).filterBounds(roi);
-  // var TC1 = TC.select('Percent_Tree_Cover');
-  TC1 = TC1.mean();
-  var TC_mask = TC1.gt(10);// >10 FAO forest definition 
-  // var TC_mask = TC1;
-  LC_mask = LC_mask.updateMask(TC_mask);
-  var BurnorNot_forest  = LC_mask;
-
-  var Forest_burnYear = BurnorNot_forest.where(BurnorNot_forest.gte(1),yeari-2000);
-  Forest_burnYear = Forest_burnYear.toUint8();
-  imglist_forest_burnYear = imglist_forest_burnYear.add(Forest_burnYear);
-}
-
-var imgcol_forest_burnyear = ee.ImageCollection.fromImages(imglist_forest_burnYear);
-var img_forest_burnyear    = imgcol_forest_burnyear.toBands();
-var Forest_burnYear_Last   = imgcol_forest_burnyear.max();
-var Forest_burnYear_First  = imgcol_forest_burnyear.min();
-var BurnorNot_forest_Last  = Forest_burnYear_Last.gte(1);
-//用截止到2019年的火烧像元（最后一次火烧时间）
-var Forest_burnYear_Last2019 = Forest_burnYear_Last.updateMask(Forest_burnYear_Last.lt(20));
-//Map.addLayer(Forest_burnYear_Last2019,{min: 1, max: 19, palette: ['yellow', 'red']},'Forest_burnYear_Last2019');
-
-//upload and import global GLASS LAI median mosaics (250m, 2000-2021)
-//import global AVHRR LAI and FPAR medians before 2000 (AVHRR LAI and FPAR: 1981-06-24–2013-12-31,scale = 0.001,5km)
+//Upload and import global GLASS LAI median mosaics (250m, 2000-2021, LAI_scale: 0.1, FPAR_scale: 0.004)
+//Import global AVHRR LAI and FPAR medians before 2000 (AVHRR LAI and FPAR: 1981-06-24–2013-12-31,scale = 0.001,5km)
 var resample = function(image) {var resampledImage = image.resample('bilinear').reproject({crs: 'EPSG:4326',scale: 30});return resampledImage;};
 
-//30m火烧像元
+//Import global forest fire dataset (30m)
 var loss_due_to_fire = ee.ImageCollection('users/sashatyu/2001-2022_fire_forest_loss_annual').mosaic();
 var loss_due_to_fire2019 = loss_due_to_fire.updateMask(loss_due_to_fire.lt(20));
-//Map.addLayer(loss_due_to_fire2019,{min: 1, max: 19, palette: ['yellow', 'red']},'loss_due_to_fire2019');
 
-//2001-2018年的风暴像元
+//Upload and import windstorm-induced forest loss dataset (30m)
 var wind = wind_loss.updateMask(wind_loss.gt(2000));
 
-//扰动数据范围
+//Import global forest loss dataset (30m)
 var gfc2022 = ee.Image('UMD/hansen/global_forest_change_2022_v1_10');
 var lossyear = gfc2022.select(['lossyear']);
 var lossyear2019 = lossyear.updateMask(lossyear.lt(20));
 var loss_recover_time1=lossyear2019.multiply(-1).add(20);
 var loss_recover_time = loss_recover_time1.updateMask(loss_recover_time1.gt(0)).uint8();
 
-//删减得到砍伐范围
+//Mask and extract deforestation
 var deforestation_recover_time = loss_recover_time.updateMask(loss_due_to_fire2019.mask().not()).updateMask(wind.mask().not());
-Map.addLayer(deforestation_recover_time,{min: 1, max: 19, palette: ['yellow', 'red']},'deforestation_recover_time');
 
 ////用"Global 4-class PALSAR-2/PALSAR Forest/Non-Forest Map"筛选恢复为森林的区域
 var FNF4 = ee.ImageCollection('JAXA/ALOS/PALSAR/YEARLY/FNF4')
