@@ -12,57 +12,24 @@ var FNF = resample(FNF_);
 var Dense_Nondence_forest = FNF_.updateMask(FNF_.lte(2));//1_Dense forest; 2_Non-dence Forest; 3_Non-forest; 4_Water
 var forest_recover = recover_time.updateMask(Dense_Nondence_forest.mask());
 
-//**制图恢复类型**2019年(包括2019)之前砍伐的2种恢复类型
-var forest_height2000= ee.Image("projects/glad/GLCLU2020/Forest_height_2000").select("b1");//留做验证
-var forest_height2020= ee.Image("projects/glad/GLCLU2020/Forest_height_2020").select("b1");
-//区分种植林和自然再生林
-//PlantationYear dataset (1982-2019)
+////**Map regrowth land type in 2020**
+//Upload and import PlantationYear dataset (1982-2019, 30 m)
 var plantationYear = ee.ImageCollection(PYear).mosaic().select(['b1']);
 var plantation1987_2020 = plantationYear.updateMask(plantationYear.gt(1986));
-//Map.addLayer(plantation1987_2020,{min: 1987, max: 2020, palette: ['blue']},'plantation1987_2020');
 var plantation = forest_recover.updateMask(plantation1987_2020.mask());
 var natural_regrowth_forest = forest_recover.updateMask(plantation.mask().not());
 var plantation1 = plantation.where(plantation,1);
 var natural_regrowth_forest2 = natural_regrowth_forest.where(natural_regrowth_forest,2);
-//nonforest_recover
-var nonforest_recover = recover_time.updateMask(forest_recover.mask().not());//.mask().not()代表取其余范围像元
+var nonforest_recover = recover_time.updateMask(forest_recover.mask().not());
 var nonforest_recover3 = nonforest_recover.where(nonforest_recover, 3);
-//合并
 var recover_type2020 = ee.ImageCollection([plantation1, natural_regrowth_forest2, nonforest_recover3]).mosaic().uint8();
-Map.addLayer(recover_type2020,{min: 1, max: 3, palette: ['green','purple', 'red']},'recover_type2020');
-
 var forest_recover_time = forest_recover;
-//**制图高度恢复量**2020树高恢复
+
+////**Map forest height and AGB regowth ratio**
+var forest_height2000= ee.Image("projects/glad/GLCLU2020/Forest_height_2000").select("b1");
+var forest_height2020= ee.Image("projects/glad/GLCLU2020/Forest_height_2020").select("b1");
 var height_2020 = forest_height2020.updateMask(forest_recover.mask());
 
-//生成随机点提取恢复时间和恢复高度
-var points_NE_China = ee.FeatureCollection.randomPoints(NE_China, 50000);
-var height_Values = height_2020.reduceRegions({
-  collection: points_NE_China,
-  reducer: ee.Reducer.mean(),
-  scale: 30,});
-var recovertime_Values = forest_recover_time.reduceRegions({
-  collection: points_NE_China,
-  reducer: ee.Reducer.mean(),
-  scale: 30,});
-
-//导出建立恢复时间高度关系公式
-Export.table.toDrive({
-  collection:height_Values,
-  folder:"NE_China_height_random",
-  description: "NE_China_height_random",
-  fileNamePrefix: "NE_China_height_random",
-});
-Export.table.toDrive({
-  collection:recovertime_Values,
-  folder:"NE_China_recovertime_random",
-  description: "NE_China_recovertime_random",
-  fileNamePrefix: "NE_China_recovertime_random",
-});
-////高度和生物量制图(附加恢复比例)
-//再生林高度公式f(x) = -15.11*e^-0.1280x+17，
-//再生林生物量公式(30m*30m)/(100m*100m)* 0.2h^2.2194 = 0.018 h^2.2194. unit: Mg/900m^2
-//***种植林考虑*10再转整形输出***
 //原始林参考树高计算，先用"Global 4-class PALSAR-2/PALSAR Forest/Non-Forest Map"筛选
 var FNF4 = ee.ImageCollection('JAXA/ALOS/PALSAR/YEARLY/FNF4')
                   .filterDate('2020-01-01', '2020-12-31')
