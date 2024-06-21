@@ -8,7 +8,9 @@ var FNF4 = ee.ImageCollection('JAXA/ALOS/PALSAR/YEARLY/FNF4')
                   .filterDate('2020-01-01', '2020-12-31')
                   .select('fnf');
 var FNF_ = FNF4.qualityMosaic('fnf');
-var FNF = resample(FNF_);
+var FNF_ = FNF_.setDefaultProjection({crs: 'EPSG:4326',scale: 25});
+var FNF = FNF_.reduceResolution({reducer: ee.Reducer.mean(), bestEffort: true, maxPixels: 4})
+                .reproject({crs: 'EPSG:4326',scale: 30});
 var Dense_Nondence_forest = FNF_.updateMask(FNF_.lte(2));//1_Dense forest; 2_Non-dence Forest; 3_Non-forest; 4_Water
 var forest_recover = recover_time.updateMask(Dense_Nondence_forest.mask());
 
